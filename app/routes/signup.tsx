@@ -30,8 +30,6 @@ export default function SignupPage() {
     setError("");
     setSuccess("");
 
-    console.log("🚀 Starting signup for:", formData.email);
-
     try {
       const { data: authData, error: authError } = await supabase.auth.signUp({
         email: formData.email,
@@ -42,7 +40,6 @@ export default function SignupPage() {
       });
 
       if (authError) {
-        console.error("❌ Signup error:", authError);
         setError(authError.message);
         return;
       }
@@ -52,8 +49,6 @@ export default function SignupPage() {
         return;
       }
 
-      console.log("✅ User created:", authData.user.id);
-
       const { error: profileError } = await supabase.from("profiles").insert({
         id: authData.user.id,
         name: formData.name,
@@ -62,23 +57,12 @@ export default function SignupPage() {
       });
 
       if (profileError && profileError.code !== "23505") {
-        console.error("❌ Profile error:", profileError);
         setError("Failed to create profile");
         return;
       }
 
-      console.log("✅ Profile created");
-      console.log("✅ Session created, refreshing auth context...");
-
-      // Wait a moment for the session to be established
-      // setTimeout(async () => {
-      //   await refreshSession();
-      //   console.log("🎉 Redirecting to tickets...");
-      //   navigate("/");
-      // }, 1000);
       navigate("/");
     } catch (error) {
-      console.error("❌ Signup exception:", error);
       setError(error instanceof Error ? error.message : "An error occurred");
     } finally {
       setLoading(false);

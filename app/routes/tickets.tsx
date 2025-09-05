@@ -164,7 +164,7 @@ export default function TicketsPage() {
 
   return (
     <AuthGuard requireAuth={true}>
-      <div className="space-y-6">
+      <div className="space-y-6 mx-20 my-8">
         {/* Error Message */}
         {loaderError && (
           <Card className="border-red-200 bg-red-50">

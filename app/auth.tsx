@@ -1,6 +1,13 @@
 import type { Session, User } from "@supabase/supabase-js";
 import type { ReactNode } from "react";
-import { createContext, useContext, useEffect, useState } from "react";
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useRef,
+  useState,
+} from "react";
 import { supabase } from "./lib/supabaseClient";
 
 type Profile = {
@@ -28,7 +35,27 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [session, setSession] = useState<Session | null>(null);
   const [loading, setLoading] = useState(true);
 
-  const loadProfile = async (userId: string) => {
+  // Use refs to track loading states and prevent unnecessary API calls
+  const isInitialized = useRef(false);
+  const profileCache = useRef<Map<string, Profile>>(new Map());
+  const loadingProfile = useRef<string | null>(null);
+
+  // Memoized profile loader with caching
+  const loadProfile = useCallback(async (userId: string) => {
+    // Prevent duplicate profile loading
+    if (loadingProfile.current === userId) {
+      return;
+    }
+
+    // Check cache first
+    const cachedProfile = profileCache.current.get(userId);
+    if (cachedProfile) {
+      setProfile(cachedProfile);
+      return;
+    }
+
+    loadingProfile.current = userId;
+
     try {
       const { data, error } = await supabase
         .from("profiles")
@@ -40,18 +67,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         console.error("❌ Profile error:", error);
         setProfile(null);
       } else {
-        console.log("✅ Profile loaded:", data.name);
+        // Cache the profile
+        profileCache.current.set(userId, data);
         setProfile(data);
       }
     } catch (error) {
       console.error("❌ Profile exception:", error);
       setProfile(null);
+    } finally {
+      loadingProfile.current = null;
     }
-  };
+  }, []);
 
-  const refreshSession = async () => {
+  // Optimized session refresh
+  const refreshSession = useCallback(async () => {
     try {
-      console.log("🔄 Refreshing session...");
       const { data, error } = await supabase.auth.getSession();
 
       if (error) {
@@ -63,12 +93,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
 
       if (data.session) {
-        console.log("✅ Session refreshed:", data.session.user.email);
         setUser(data.session.user);
         setSession(data.session);
         await loadProfile(data.session.user.id);
       } else {
-        console.log("❌ No session found");
         setUser(null);
         setProfile(null);
         setSession(null);
@@ -79,51 +107,50 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setProfile(null);
       setSession(null);
     }
-  };
+  }, [loadProfile]);
 
-  const signOut = async () => {
+  const signOut = useCallback(async () => {
     try {
-      console.log("👋 Signing out...");
-
       // Clear state immediately for instant UI feedback
       setUser(null);
       setProfile(null);
       setSession(null);
-      setLoading(false); // Important: Set loading to false so AuthGuard doesn't show spinner
+      setLoading(false);
 
-      // Call Supabase signOut in background - don't wait for it
-      supabase.auth.signOut().catch((error) => {
-        console.error("❌ Background sign out error:", error);
-      });
+      // Clear profile cache
+      profileCache.current.clear();
+      loadingProfile.current = null;
 
-      console.log("✅ Signed out successfully");
+      // Call Supabase signOut in background
+      await supabase.auth.signOut();
     } catch (error) {
       console.error("❌ Sign out exception:", error);
-      // Even on error, ensure loading is false
       setLoading(false);
     }
-  };
+  }, []);
 
   useEffect(() => {
+    // Prevent multiple initializations
+    if (isInitialized.current) {
+      return;
+    }
+
+    isInitialized.current = true;
+
     // Initialize client-side authentication
     const initializeAuth = async () => {
       try {
-        console.log("🔄 Initializing auth...");
         const { data, error } = await supabase.auth.getSession();
 
         if (error) {
           console.error("❌ Initial session error:", error);
-          setLoading(false);
           return;
         }
 
         if (data.session) {
-          console.log("✅ Initial session found:", data.session.user.email);
           setUser(data.session.user);
           setSession(data.session);
           await loadProfile(data.session.user.id);
-        } else {
-          console.log("❌ No initial session");
         }
       } catch (error) {
         console.error("❌ Auth initialization exception:", error);
@@ -134,31 +161,58 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     initializeAuth();
 
-    // Listen for auth changes
+    // Listen for auth changes with optimized handling
     const {
       data: { subscription },
     } = supabase.auth.onAuthStateChange(async (event, session) => {
-      console.log("🔄 Auth state changed:", event, session?.user?.email);
+      // Skip processing if we're in the middle of initialization
+      if (!isInitialized.current) {
+        return;
+      }
 
-      if (session && event !== "SIGNED_OUT") {
-        // Only load profile when signing in or token refresh, not when signing out
-        setUser(session.user);
-        setSession(session);
-        await loadProfile(session.user.id);
-        setLoading(false); // Ensure loading is false after successful auth
-      } else {
-        // Clear state for sign out or no session
-        setUser(null);
-        setProfile(null);
-        setSession(null);
-        setLoading(false); // Ensure loading is false when signed out
+      // Handle different auth events efficiently
+      switch (event) {
+        case "SIGNED_IN":
+        case "TOKEN_REFRESHED":
+          if (session) {
+            setUser(session.user);
+            setSession(session);
+            // Only load profile if we don't have it cached or user changed
+            if (!profile || profile.id !== session.user.id) {
+              await loadProfile(session.user.id);
+            }
+          }
+          setLoading(false);
+          break;
+
+        case "SIGNED_OUT":
+          setUser(null);
+          setProfile(null);
+          setSession(null);
+          profileCache.current.clear();
+          loadingProfile.current = null;
+          setLoading(false);
+          break;
+
+        case "USER_UPDATED":
+          if (session) {
+            setUser(session.user);
+            setSession(session);
+          }
+          setLoading(false);
+          break;
+
+        default:
+          // For other events, just ensure loading is false
+          setLoading(false);
+          break;
       }
     });
 
     return () => {
       subscription.unsubscribe();
     };
-  }, []);
+  }, [loadProfile, profile]);
 
   const value = {
     user,

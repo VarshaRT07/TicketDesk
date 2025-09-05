@@ -1,6 +1,7 @@
-import { useEffect } from "react";
+import { useEffect, useMemo } from "react";
 import { useNavigate } from "react-router";
 import { useAuth } from "~/auth";
+import { LoadingFallback } from "./LoadingComponents";
 
 interface AuthGuardProps {
   children: React.ReactNode;
@@ -16,52 +17,38 @@ export function AuthGuard({
   const { user, loading } = useAuth();
   const navigate = useNavigate();
 
-  // Debug logging
-  useEffect(() => {
-    console.log("🛡️ AuthGuard state:", {
-      user: !!user,
+  const authState = useMemo(
+    () => ({
+      isAuthenticated: !!user,
       loading,
-      requireAuth,
-      redirectTo,
-    });
-  }, [user, loading, requireAuth, redirectTo]);
+      shouldRedirect:
+        !loading && ((requireAuth && !user) || (!requireAuth && user)),
+      redirectPath: requireAuth && !user ? redirectTo : "/",
+    }),
+    [user, loading, requireAuth, redirectTo]
+  );
 
   useEffect(() => {
-    if (!loading) {
-      if (requireAuth && !user) {
-        console.log("🔄 AuthGuard: Redirecting to", redirectTo, "(no user)");
-        navigate(redirectTo);
-      } else if (!requireAuth && user) {
-        console.log("🔄 AuthGuard: Redirecting to / (user exists)");
-        navigate("/");
-      }
+    if (authState.shouldRedirect) {
+      navigate(authState.redirectPath);
     }
-  }, [user, loading, navigate, redirectTo, requireAuth]);
+  }, [authState.shouldRedirect, authState.redirectPath, navigate]);
 
   if (loading) {
-    console.log("⏳ AuthGuard: Showing loading spinner");
     return (
       <div className="flex items-center justify-center min-h-screen">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto mb-4"></div>
-          <p>Loading...</p>
-        </div>
+        <LoadingFallback message="Authenticating..." />
       </div>
     );
   }
 
   if (requireAuth && !user) {
-    console.log("🚫 AuthGuard: Blocking render (requireAuth=true, no user)");
-    return null; // Will redirect via useEffect
+    return null;
   }
 
   if (!requireAuth && user) {
-    console.log(
-      "🚫 AuthGuard: Blocking render (requireAuth=false, user exists)"
-    );
-    return null; // Will redirect via useEffect
+    return null;
   }
 
-  console.log("✅ AuthGuard: Rendering children");
   return <>{children}</>;
 }

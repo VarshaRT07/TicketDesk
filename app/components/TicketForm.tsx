@@ -34,7 +34,6 @@ export function TicketForm() {
   const formRef = React.useRef<HTMLFormElement>(null);
   const isSubmitting = navigation.state === "submitting";
 
-  // Reset form after successful submission
   React.useEffect(() => {
     if (actionData?.success) {
       setState({
@@ -57,14 +56,6 @@ export function TicketForm() {
     }
 
     const form = event.currentTarget;
-    const formDataObj = new FormData(form);
-
-    // Add files to form data
-    files.forEach((file, index) => {
-      formDataObj.append(`attachment_${index}`, file);
-    });
-
-    // Submit the form programmatically
     form.submit();
   };
 
@@ -221,15 +212,6 @@ export function TicketForm() {
               />
             </div>
 
-            {/* Attachments */}
-            <div className="space-y-2">
-              <label className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70">
-                Attachments
-              </label>
-              <AttachmentsDropzone value={files} onChange={setFiles} />
-            </div>
-
-            {/* Actions */}
             <div className="flex items-center justify-between pt-4">
               <Button
                 type="button"

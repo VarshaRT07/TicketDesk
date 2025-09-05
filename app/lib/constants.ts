@@ -56,6 +56,21 @@ export const priorityConfig = {
   },
 } as const;
 
+// Arrays for form selects and iteration
+export const TICKET_STATUSES = [
+  { value: "open", label: "Open" },
+  { value: "in_progress", label: "In Progress" },
+  { value: "waiting", label: "Waiting" },
+  { value: "closed", label: "Closed" },
+] as const;
+
+export const TICKET_PRIORITIES = [
+  { value: "low", label: "Low" },
+  { value: "medium", label: "Medium" },
+  { value: "high", label: "High" },
+  { value: "critical", label: "Critical" },
+] as const;
+
 // File upload configuration
 export const fileUploadConfig = {
   maxSizeMB: 10,
@@ -107,7 +122,7 @@ export const routes = {
   signup: "/signup",
 } as const;
 
-// Status and priority arrays for iteration
+// Status and priority arrays for iteration (legacy)
 export const statusOptions = Object.keys(statusConfig) as Array<
   keyof typeof statusConfig
 >;
