@@ -1,86 +1,80 @@
-import { ArrowLeft } from "lucide-react";
-import { Link, redirect } from "react-router";
+import { useState } from "react";
+import { useNavigate } from "react-router";
 import { AuthGuard } from "~/components/AuthGuard";
-import { TicketForm } from "~/components/TicketForm";
-import { Button } from "~/components/ui/button";
-import { supabaseServer } from "~/lib/supabaseClient";
-import type { TicketPriority, TicketStatus } from "~/lib/types";
-import type { Route } from "./+types/newtickets";
-
-export function meta({}: Route.MetaArgs) {
-  return [
-    { title: "New Ticket - TicketDesk" },
-    { name: "description", content: "Create a new support ticket" },
-  ];
-}
-
-export async function action({ request }: Route.ActionArgs) {
-  const formData = await request.formData();
-
-  const title = formData.get("title") as string;
-  const priority = formData.get("priority") as TicketPriority;
-  const status = formData.get("status") as TicketStatus;
-  const description = formData.get("description") as string;
-
-  if (!title?.trim()) {
-    return {
-      error: "Title is required",
-      success: false,
-    };
-  }
-
-  if (!description?.trim()) {
-    return {
-      error: "Description is required",
-      success: false,
-    };
-  }
-
-  try {
-    const userId = formData.get("userId") as string;
-
-    const { error: ticketError } = await supabaseServer
-      .from("tickets")
-      .insert({
-        title: title.trim(),
-        description: description.trim(),
-        priority,
-        status,
-        created_by: userId,
-      })
-      .select()
-      .single();
-
-    if (ticketError) {
-      return {
-        error: `Failed to create ticket: ${ticketError.message}`,
-        success: false,
-      };
-    }
-    throw redirect("/");
-  } catch (error) {
-    if (error instanceof Response) {
-      throw error;
-    }
-
-    return {
-      error:
-        error instanceof Error ? error.message : "An unexpected error occurred",
-      success: false,
-    };
-  }
-}
+import TicketForm from "~/components/TicketForm";
+import { supabase } from "~/lib/supabaseClient";
+import type { TicketFormData } from "~/lib/types";
 
 export default function NewTicketPage() {
+  const [error, setError] = useState<string | null>(null);
+  const navigate = useNavigate();
+
+  const handleSubmit = async (formData: TicketFormData) => {
+    console.log(formData, "FormData");
+    try {
+      setError(null);
+
+      // Get current user
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+
+      if (!user) {
+        throw new Error("You must be logged in to create a ticket");
+      }
+
+      // Insert the ticket
+      const { data, error } = await supabase
+        .from("tickets")
+        .insert({
+          title: formData.title,
+          description: formData.description,
+          priority: formData.priority,
+          assigned_to: formData.assigned_to,
+          tags: formData.tags,
+          created_by: user.id,
+        })
+        .select()
+        .single();
+
+      if (error) {
+        throw error;
+      }
+
+      // Redirect to the new ticket
+      navigate(`/tickets/${data.id}`);
+    } catch (err) {
+      console.error("Error creating ticket:", err);
+      setError(err instanceof Error ? err.message : "Failed to create ticket");
+    }
+  };
+
   return (
-    <AuthGuard requireAuth={true}>
-      <Button variant="ghost" asChild>
-        <Link to="/">
-          <ArrowLeft className="w-4 h-4 mr-2" />
-          Back to Tickets
-        </Link>
-      </Button>
-      <TicketForm />
+    <AuthGuard>
+      <div className="max-w-4xl mx-auto space-y-6">
+        {/* Header */}
+        <div className="bg-card rounded-2xl shadow-sm border border-border p-6">
+          <h1 className="text-2xl font-bold text-foreground mb-2">
+            Create New Ticket
+          </h1>
+          <p className="text-muted-foreground">
+            Submit a new support request and we'll get back to you as soon as
+            possible.
+          </p>
+        </div>
+
+        {/* Error Message */}
+        {error && (
+          <div className="bg-destructive/10 border border-destructive/20 rounded-xl p-4">
+            <p className="text-destructive font-medium">{error}</p>
+          </div>
+        )}
+
+        {/* Ticket Form */}
+        <div className="bg-card rounded-2xl shadow-sm border border-border p-6">
+          <TicketForm onSubmit={handleSubmit} />
+        </div>
+      </div>
     </AuthGuard>
   );
 }

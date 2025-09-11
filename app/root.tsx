@@ -1,3 +1,4 @@
+import { createContext, useContext, useEffect, useState } from "react";
 import {
   isRouteErrorResponse,
   Links,
@@ -5,12 +6,183 @@ import {
   Outlet,
   Scripts,
   ScrollRestoration,
+  useLocation,
 } from "react-router";
 
 import type { Route } from "./+types/root";
 import "./app.css";
-import { AuthProvider } from "./auth";
+import { AuthProvider, useAuth } from "./auth";
 import { Navbar } from "./components/Navbar";
+import Sidebar from "./components/Sidebar";
+
+// Theme Context
+interface ThemeContextType {
+  darkMode: boolean;
+  toggleDarkMode: () => void;
+}
+
+const ThemeContext = createContext<ThemeContextType | undefined>(undefined);
+
+export const useTheme = () => {
+  const context = useContext(ThemeContext);
+  if (context === undefined) {
+    throw new Error("useTheme must be used within a ThemeProvider");
+  }
+  return context;
+};
+
+// Theme Provider Component
+function ThemeProvider({ children }: { children: React.ReactNode }) {
+  const [darkMode, setDarkMode] = useState(false);
+
+  useEffect(() => {
+    // Check for saved theme preference or default to system preference
+    const savedTheme = localStorage.getItem("theme");
+    const systemPrefersDark = window.matchMedia(
+      "(prefers-color-scheme: dark)"
+    ).matches;
+
+    if (savedTheme === "dark" || (!savedTheme && systemPrefersDark)) {
+      setDarkMode(true);
+      document.documentElement.classList.add("dark");
+    } else {
+      setDarkMode(false);
+      document.documentElement.classList.remove("dark");
+    }
+  }, []);
+
+  const toggleDarkMode = () => {
+    const newDarkMode = !darkMode;
+    setDarkMode(newDarkMode);
+
+    if (newDarkMode) {
+      document.documentElement.classList.add("dark");
+      localStorage.setItem("theme", "dark");
+    } else {
+      document.documentElement.classList.remove("dark");
+      localStorage.setItem("theme", "light");
+    }
+  };
+
+  return (
+    <ThemeContext.Provider value={{ darkMode, toggleDarkMode }}>
+      {children}
+    </ThemeContext.Provider>
+  );
+}
+
+// Sidebar Context
+interface SidebarContextType {
+  sidebarOpen: boolean;
+  setSidebarOpen: (open: boolean) => void;
+  toggleSidebar: () => void;
+}
+
+const SidebarContext = createContext<SidebarContextType | undefined>(undefined);
+
+export const useSidebar = () => {
+  const context = useContext(SidebarContext);
+  if (context === undefined) {
+    throw new Error("useSidebar must be used within a SidebarProvider");
+  }
+  return context;
+};
+
+// Sidebar Provider Component
+function SidebarProvider({ children }: { children: React.ReactNode }) {
+  const [sidebarOpen, setSidebarOpen] = useState(true);
+
+  useEffect(() => {
+    // Check for saved sidebar preference
+    const savedSidebarState = localStorage.getItem("sidebarOpen");
+    if (savedSidebarState !== null) {
+      setSidebarOpen(JSON.parse(savedSidebarState));
+    }
+  }, []);
+
+  const toggleSidebar = () => {
+    const newState = !sidebarOpen;
+    setSidebarOpen(newState);
+    localStorage.setItem("sidebarOpen", JSON.stringify(newState));
+  };
+
+  return (
+    <SidebarContext.Provider
+      value={{ sidebarOpen, setSidebarOpen, toggleSidebar }}
+    >
+      {children}
+    </SidebarContext.Provider>
+  );
+}
+
+// Main App Layout Component
+function AppLayout() {
+  const { user } = useAuth();
+  const { darkMode, toggleDarkMode } = useTheme();
+  const { sidebarOpen, toggleSidebar } = useSidebar();
+  const location = useLocation();
+
+  // Don't show sidebar and navbar on auth pages
+  const isAuthPage =
+    location.pathname === "/login" || location.pathname === "/signup";
+
+  const handleCreateTicket = () => {
+    window.location.href = "/tickets/new";
+  };
+
+  if (isAuthPage || !user) {
+    return (
+      <div className="min-h-screen bg-background">
+        <Outlet />
+      </div>
+    );
+  }
+
+  return (
+    <div className="min-h-screen bg-background">
+      <div className="flex h-screen">
+        {/* Sidebar */}
+        <div
+          className={`${
+            sidebarOpen ? "w-72" : "w-16"
+          } transition-all duration-300 ease-in-out flex-shrink-0 border-r border-border`}
+        >
+          <div className="h-full">
+            <Sidebar collapsed={!sidebarOpen} />
+          </div>
+        </div>
+
+        {/* Main Content Area */}
+        <div className="flex-1 flex flex-col overflow-hidden">
+          {/* Navbar */}
+          <Navbar
+            showSearch={true}
+            darkMode={darkMode}
+            onToggleDarkMode={toggleDarkMode}
+            onCreateTicket={handleCreateTicket}
+            sidebarOpen={sidebarOpen}
+            onToggleSidebar={toggleSidebar}
+          />
+
+          {/* Page Content */}
+          <main className="flex-1 overflow-auto bg-background">
+            <div className="p-6">
+              <Outlet />
+            </div>
+          </main>
+        </div>
+      </div>
+
+      {/* Mobile Sidebar Overlay */}
+      {sidebarOpen && (
+        <div
+          className="fixed inset-0 bg-black/50 backdrop-blur-sm z-40 lg:hidden"
+          onClick={toggleSidebar}
+        />
+      )}
+    </div>
+  );
+}
 
 export const links: Route.LinksFunction = () => [
   { rel: "preconnect", href: "https://fonts.googleapis.com" },
@@ -27,7 +199,7 @@ export const links: Route.LinksFunction = () => [
 
 export function Layout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en" className="dark">
+    <html lang="en">
       <head>
         <meta charSet="utf-8" />
         <meta name="viewport" content="width=device-width, initial-scale=1" />
@@ -45,12 +217,13 @@ export function Layout({ children }: { children: React.ReactNode }) {
 
 export default function RootLayout() {
   return (
-    <AuthProvider>
-      <Navbar />
-      <main className="flex-1 p-6 overflow-y-auto">
-        <Outlet />
-      </main>
-    </AuthProvider>
+    <ThemeProvider>
+      <SidebarProvider>
+        <AuthProvider>
+          <AppLayout />
+        </AuthProvider>
+      </SidebarProvider>
+    </ThemeProvider>
   );
 }
 

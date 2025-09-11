@@ -1,17 +1,5 @@
-import { priorityConfig, statusConfig } from "./constants";
-
-// Base types
-export type TicketStatus = keyof typeof statusConfig;
-export type TicketPriority = keyof typeof priorityConfig;
-
-// Database types
-export interface Profile {
-  id: string;
-  name: string;
-  email: string;
-  created_at: string;
-  updated_at: string;
-}
+export type TicketStatus = "open" | "in_progress" | "waiting" | "closed";
+export type TicketPriority = "low" | "medium" | "high" | "critical";
 
 export interface Ticket {
   id: string;
@@ -22,11 +10,67 @@ export interface Ticket {
   created_at: string;
   updated_at: string;
   created_by: string;
-  assigned_to: string | null;
-  creator?: Profile;
-  assignee?: Profile;
+  assigned_to?: string;
   creator_name?: string;
   creator_email?: string;
+  assignee_name?: string;
+  assignee_email?: string;
+  category_id?: string;
+  category_name?: string;
+  tags?: string[];
+  attachments?: Attachment[];
+  comments?: Comment[];
+}
+
+export interface Profile {
+  id: string;
+  name: string;
+  email: string;
+  avatar_url?: string;
+  role?: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface Category {
+  id: string;
+  name: string;
+  description?: string;
+  color?: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface Attachment {
+  id: string;
+  ticket_id: string;
+  filename: string;
+  file_path: string;
+  file_size: number;
+  mime_type: string;
+  uploaded_by: string;
+  created_at: string;
+}
+
+export interface Comment {
+  id: string;
+  ticket_id: string;
+  content: string;
+  created_by: string;
+  created_at: string;
+  updated_at: string;
+  creator_name?: string;
+  creator_email?: string;
+}
+
+export interface TicketActivity {
+  id: string;
+  ticket_id: string;
+  action: string;
+  details?: string;
+  created_by: string;
+  created_at: string;
+  creator_name?: string;
 }
 
 export interface TicketStats {
@@ -37,88 +81,83 @@ export interface TicketStats {
   closed: number;
 }
 
-// Form types
-export interface TicketFormData {
-  title: string;
-  description: string;
-  priority: TicketPriority;
-  status: TicketStatus;
-  userId: string;
-  attachments?: File[];
-}
-
-export interface FormState {
-  title: string;
-  priority: TicketPriority;
-  status: TicketStatus;
-  description: string;
-}
-
-// API Response types
-export interface ApiResponse<T> {
-  data?: T;
-  error?: string;
-  success: boolean;
-}
-
-export interface LoaderData<T> {
-  data: T;
-  error?: string;
-}
-
-// Filter types
 export interface TicketFilters {
   status: string;
   priority: string;
   search: string;
+  category?: string;
+  assigned_to?: string;
+  created_by?: string;
+  date_from?: string;
+  date_to?: string;
+  tags?: string[];
 }
 
-// Component prop types
-export interface StatusBadgeProps {
-  status: TicketStatus;
-  className?: string;
+export interface TicketQuery {
+  filters?: TicketFilters;
+  sort?: {
+    field: keyof Ticket;
+    direction: "asc" | "desc";
+  };
+  page?: number;
+  limit?: number;
+  per_page?: number;
+  include_stats?: boolean;
 }
 
-export interface PriorityBadgeProps {
+export interface PaginatedResponse<T> {
+  data: T[];
+  total: number;
+  page: number;
+  limit: number;
+  totalPages: number;
+  count?: number;
+}
+
+export interface CommentFormData {
+  content: string;
+  ticket_id: string;
+  attachments?: File[];
+  comment_type?: string;
+  is_internal?: boolean;
+  parent_id?: string;
+}
+
+export interface TicketFormData {
+  title: string;
+  description: string;
   priority: TicketPriority;
-  className?: string;
+  status?: TicketStatus;
+  category_id?: string;
+  category?: string;
+  assigned_to?: string;
+  tags?: string[];
+  due_date?: string;
+  userId?: string;
+  attachments?: File[];
 }
 
-export interface TicketCardProps {
-  ticket: Ticket;
-  className?: string;
+export interface StatTrend {
+  value: number;
+  isPositive: boolean;
 }
 
-// Attachment types
-export interface AttachmentFile extends File {
-  preview?: string;
+export interface DashboardTrends {
+  total: StatTrend;
+  open: StatTrend;
+  in_progress: StatTrend;
+  closed: StatTrend;
+  waiting?: StatTrend;
 }
 
-export interface AttachmentsDropzoneProps {
-  value?: File[];
-  onChange?: (files: File[]) => void;
-  accept?: string[];
-  maxSizeMB?: number;
-  disabled?: boolean;
-  className?: string;
-}
-
-// Error types
 export interface AppError {
   message: string;
   code?: string;
-  details?: unknown;
+  details?: any;
 }
 
-// Auth types
-export interface User {
-  id: string;
-  email: string;
-  name?: string;
-}
-
-export interface AuthState {
-  user: User | null;
-  loading: boolean;
+export interface FormState {
+  isSubmitting: boolean;
   error?: string;
+  success?: boolean;
 }

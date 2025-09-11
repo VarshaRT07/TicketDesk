@@ -1,243 +1,363 @@
-import { AlertCircle } from "lucide-react";
-import * as React from "react";
-import { Form, useActionData, useNavigation } from "react-router";
-import { useAuth } from "~/auth";
-import {
-  defaultTicketValues,
-  getPriorityConfig,
-  getStatusConfig,
-  priorityOptions,
-  statusOptions,
-} from "~/lib/constants";
-import type { FormState, TicketPriority, TicketStatus } from "~/lib/types";
-import { AttachmentsDropzone } from "./AttachmentsDropZone";
+import { AlertCircle, Plus, Upload, X } from "lucide-react";
+import React, { useState } from "react";
+import type { FormState, TicketFormData } from "~/lib/types";
 import { RichTextEditor } from "./RichTextEditor";
+import { Badge } from "./ui/badge";
 import { Button } from "./ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "./ui/card";
 import { Input } from "./ui/input";
+import { Label } from "./ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "./ui/select";
 
-export function TicketForm() {
-  const { user } = useAuth();
-  const navigation = useNavigation();
-  const actionData = useActionData() as
-    | { error?: string; success?: boolean }
-    | undefined;
+interface TicketFormProps {
+  onSubmit: (data: TicketFormData) => Promise<void>;
+  initialData?: Partial<TicketFormData>;
+  isEditing?: boolean;
+  className?: string;
+}
 
-  const [files, setFiles] = React.useState<File[]>([]);
-  const [state, setState] = React.useState<FormState>({
-    title: defaultTicketValues.title,
-    priority: defaultTicketValues.priority,
-    status: defaultTicketValues.status,
-    description: defaultTicketValues.description,
+export default function TicketForm({
+  onSubmit,
+  initialData,
+  isEditing = false,
+  className = "",
+}: TicketFormProps) {
+  const [formData, setFormData] = useState<TicketFormData>({
+    title: initialData?.title || "",
+    description: initialData?.description || "",
+    priority: initialData?.priority || "medium",
+    assigned_to: initialData?.assigned_to || "",
+    attachments: [],
   });
 
-  const formRef = React.useRef<HTMLFormElement>(null);
-  const isSubmitting = navigation.state === "submitting";
+  const [_files, setFiles] = useState<File[]>([]);
+  const [formState, setFormState] = useState<FormState>({
+    isSubmitting: false,
+    error: undefined,
+    success: false,
+  });
+  // const [tags, setTags] = useState<string[]>(initialData?.tags || []);
+  // const [newTag, setNewTag] = useState("");
 
-  React.useEffect(() => {
-    if (actionData?.success) {
-      setState({
-        title: defaultTicketValues.title,
-        priority: defaultTicketValues.priority,
-        status: defaultTicketValues.status,
-        description: defaultTicketValues.description,
-      });
-      setFiles([]);
-      formRef.current?.reset();
-    }
-  }, [actionData?.success]);
+  const handleFileUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const uploadedFiles = Array.from(event.target.files || []);
+    setFiles((prev) => [...prev, ...uploadedFiles]);
+    setFormData((prev) => ({
+      ...prev,
+      attachments: [...(prev.attachments || []), ...uploadedFiles],
+    }));
+  };
 
-  const handleSubmit = (event: React.FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
+  const removeFile = (index: number) => {
+    setFiles((prev) => prev.filter((_, i) => i !== index));
+    setFormData((prev) => ({
+      ...prev,
+      attachments: prev.attachments?.filter((_, i) => i !== index) || [],
+    }));
+  };
 
-    if (!user?.id) {
-      console.error("User not authenticated");
+  // const addTag = () => {
+  //   if (newTag.trim() && !tags.includes(newTag.trim())) {
+  //     const updatedTags = [...tags, newTag.trim()];
+  //     setTags(updatedTags);
+  //     setFormData((prev) => ({ ...prev, tags: updatedTags }));
+  //     setNewTag("");
+  //   }
+  // };
+
+  // const removeTag = (tagToRemove: string) => {
+  //   const updatedTags = tags.filter((tag) => tag !== tagToRemove);
+  //   setTags(updatedTags);
+  //   setFormData((prev) => ({ ...prev, tags: updatedTags }));
+  // };
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+
+    if (!formData.title.trim() || !formData.description.trim()) {
+      setFormState((prev) => ({
+        ...prev,
+        error: "Title and description are required",
+      }));
       return;
     }
 
-    const form = event.currentTarget;
-    form.submit();
-  };
+    setFormState((prev) => ({ ...prev, isSubmitting: true, error: undefined }));
 
-  const handleReset = () => {
-    setState({
-      title: defaultTicketValues.title,
-      priority: defaultTicketValues.priority,
-      status: defaultTicketValues.status,
-      description: defaultTicketValues.description,
-    });
-    setFiles([]);
-    formRef.current?.reset();
-  };
+    try {
+      await onSubmit(formData);
+      setFormState((prev) => ({ ...prev, isSubmitting: false, success: true }));
 
-  if (!user) {
-    return (
-      <Card className="max-w-2xl mx-auto">
-        <CardContent className="p-6">
-          <div className="flex items-center gap-2 text-destructive">
-            <AlertCircle className="h-4 w-4" />
-            <span>You must be logged in to create a ticket.</span>
-          </div>
-        </CardContent>
-      </Card>
-    );
-  }
+      if (!isEditing) {
+        // Reset form for new tickets
+        setFormData({
+          title: "",
+          description: "",
+          priority: "medium",
+          category_id: "",
+          assigned_to: "",
+          tags: [],
+          attachments: [],
+        });
+        // setTags([]);
+        setFiles([]);
+      }
+    } catch (error) {
+      setFormState((prev) => ({
+        ...prev,
+        isSubmitting: false,
+        error: error instanceof Error ? error.message : "An error occurred",
+      }));
+    }
+  };
 
   return (
-    <div className="max-w-4xl mx-auto space-y-6">
-      {actionData?.error && (
-        <Card className="border-destructive">
-          <CardContent className="p-4">
-            <div className="flex items-center gap-2 text-destructive">
-              <AlertCircle className="h-4 w-4" />
-              <span>{actionData.error}</span>
+    <Card className={`w-full max-w-4xl mx-auto ${className}`}>
+      <CardHeader>
+        <CardTitle className="flex items-center space-x-2">
+          <span>{isEditing ? "Edit Ticket" : "Create New Ticket"}</span>
+        </CardTitle>
+      </CardHeader>
+
+      <CardContent>
+        <form onSubmit={handleSubmit} className="space-y-6">
+          {/* Error Display */}
+          {formState.error && (
+            <div className="flex items-center space-x-2 p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg">
+              <AlertCircle className="w-4 h-4 text-red-600 dark:text-red-400" />
+              <span className="text-sm text-red-600 dark:text-red-400">
+                {formState.error}
+              </span>
             </div>
-          </CardContent>
-        </Card>
-      )}
+          )}
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Create New Ticket</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <Form
-            ref={formRef}
-            method="post"
-            onSubmit={handleSubmit}
-            className="space-y-6"
-          >
-            {/* Hidden fields */}
-            <input type="hidden" name="userId" value={user.id} />
-            <input type="hidden" name="description" value={state.description} />
+          {/* Success Display */}
+          {formState.success && (
+            <div className="p-3 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-lg">
+              <span className="text-sm text-green-600 dark:text-green-400">
+                Ticket {isEditing ? "updated" : "created"} successfully!
+              </span>
+            </div>
+          )}
 
-            {/* Title */}
+          {/* Title */}
+          <div className="space-y-2">
+            <Label htmlFor="title">Title *</Label>
+            <Input
+              id="title"
+              value={formData.title}
+              onChange={(e) =>
+                setFormData((prev) => ({ ...prev, title: e.target.value }))
+              }
+              placeholder="Brief description of the issue"
+              className="w-full"
+              required
+            />
+          </div>
+
+          {/* Priority and Category Row */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div className="space-y-2">
-              <label
-                htmlFor="title"
-                className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
+              <Label htmlFor="priority">Priority</Label>
+              <Select
+                value={formData.priority}
+                onValueChange={(value: any) =>
+                  setFormData((prev) => ({ ...prev, priority: value }))
+                }
               >
-                Title *
-              </label>
+                <SelectTrigger>
+                  <SelectValue placeholder="Select priority" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="low">Low</SelectItem>
+                  <SelectItem value="medium">Medium</SelectItem>
+                  <SelectItem value="high">High</SelectItem>
+                  <SelectItem value="critical">Critical</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            {/* <div className="space-y-2">
+              <Label htmlFor="category">Category</Label>
+              <Select
+                value={formData.category_id || "none"}
+                onValueChange={(value: any) =>
+                  setFormData((prev) => ({
+                    ...prev,
+                    category_id: value === "none" ? "" : value
+                  }))
+                }
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Select category" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">No Category</SelectItem>
+                  <SelectItem value="bug">Bug Report</SelectItem>
+                  <SelectItem value="feature">Feature Request</SelectItem>
+                  <SelectItem value="support">Support</SelectItem>
+                  <SelectItem value="question">Question</SelectItem>
+                </SelectContent>
+              </Select>
+            </div> */}
+          </div>
+
+          {/* Assigned To */}
+          <div className="space-y-2">
+            <Label htmlFor="assigned_to">Assign To</Label>
+            <Select
+              value={formData.assigned_to || "unassigned"}
+              onValueChange={(value: any) =>
+                setFormData((prev) => ({
+                  ...prev,
+                  assigned_to: value === "unassigned" ? "" : value
+                }))
+              }
+            >
+              <SelectTrigger>
+                <SelectValue placeholder="Select assignee (optional)" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="unassigned">Unassigned</SelectItem>
+                <SelectItem value="admin">Admin</SelectItem>
+                <SelectItem value="support">Support Team</SelectItem>
+                <SelectItem value="developer">Developer</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+
+          {/* Description */}
+          <div className="space-y-2">
+            <Label htmlFor="description">Description *</Label>
+            <RichTextEditor
+              value={formData.description}
+              onChange={(value: any) =>
+                setFormData((prev) => ({ ...prev, description: value }))
+              }
+              placeholder="Provide detailed information about the issue..."
+              className="min-h-[200px]"
+            />
+          </div>
+
+          {/* Tags */}
+          {/* <div className="space-y-2">
+            <Label>Tags</Label>
+            <div className="flex flex-wrap gap-2 mb-2">
+              {tags.map((tag, index) => (
+                <Badge
+                  key={index}
+                  variant="secondary"
+                  className="flex items-center space-x-1"
+                >
+                  <span>{tag}</span>
+                  <button
+                    type="button"
+                    onClick={() => removeTag(tag)}
+                    className="ml-1 hover:text-red-500"
+                  >
+                    <X className="w-3 h-3" />
+                  </button>
+                </Badge>
+              ))}
+            </div>
+            <div className="flex space-x-2">
               <Input
-                id="title"
-                name="title"
-                type="text"
-                required
-                placeholder="Brief description of the issue"
-                value={state.title}
-                onChange={(e) =>
-                  setState((s) => ({ ...s, title: e.target.value }))
+                value={newTag}
+                onChange={(e) => setNewTag(e.target.value)}
+                placeholder="Add a tag"
+                onKeyDown={(e) =>
+                  e.key === "Enter" && (e.preventDefault(), addTag())
                 }
-                disabled={isSubmitting}
+                className="flex-1"
               />
-            </div>
-
-            {/* Priority */}
-            <div className="space-y-2">
-              <label
-                htmlFor="priority"
-                className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
-              >
-                Priority *
-              </label>
-              <select
-                name="priority"
-                value={state.priority}
-                onChange={(e) =>
-                  setState((s) => ({
-                    ...s,
-                    priority: e.target.value as TicketPriority,
-                  }))
-                }
-                disabled={isSubmitting}
-                className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
-              >
-                {priorityOptions.map((priority) => {
-                  const config = getPriorityConfig(priority);
-                  return (
-                    <option key={priority} value={priority}>
-                      {config.label}
-                    </option>
-                  );
-                })}
-              </select>
-            </div>
-
-            {/* Status */}
-            <div className="space-y-2">
-              <label
-                htmlFor="status"
-                className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
-              >
-                Status *
-              </label>
-              <select
-                name="status"
-                value={state.status}
-                onChange={(e) =>
-                  setState((s) => ({
-                    ...s,
-                    status: e.target.value as TicketStatus,
-                  }))
-                }
-                disabled={isSubmitting}
-                className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
-              >
-                {statusOptions.map((status) => {
-                  const config = getStatusConfig(status);
-                  return (
-                    <option key={status} value={status}>
-                      {config.label}
-                    </option>
-                  );
-                })}
-              </select>
-            </div>
-
-            {/* Description */}
-            <div className="space-y-2">
-              <label
-                htmlFor="description"
-                className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
-              >
-                Description *
-              </label>
-              <RichTextEditor
-                value={state.description}
-                onChange={(html) =>
-                  setState((s) => ({ ...s, description: html }))
-                }
-                placeholder="Provide detailed information about the issue..."
-              />
-            </div>
-
-            <div className="flex items-center justify-between pt-4">
               <Button
                 type="button"
+                onClick={addTag}
                 variant="outline"
-                onClick={handleReset}
-                disabled={isSubmitting}
+                size="sm"
               >
-                Reset Form
+                <Plus className="w-4 h-4" />
               </Button>
-
-              <div className="flex items-center gap-2">
-                <Button
-                  type="submit"
-                  disabled={
-                    isSubmitting ||
-                    !state.title.trim() ||
-                    !state.description.trim()
-                  }
-                >
-                  {isSubmitting ? "Creating..." : "Create Ticket"}
-                </Button>
-              </div>
             </div>
-          </Form>
-        </CardContent>
-      </Card>
-    </div>
+          </div> */}
+
+          {/* File Attachments */}
+          <div className="space-y-2">
+            <Label>Attachments</Label>
+            <div className="border-2 border-dashed border-gray-300 dark:border-gray-600 rounded-lg p-6 text-center">
+              <input
+                type="file"
+                multiple
+                onChange={handleFileUpload}
+                className="hidden"
+                id="file-upload"
+                accept="image/*,.pdf,.doc,.docx,.txt"
+              />
+              <label htmlFor="file-upload" className="cursor-pointer">
+                <Upload className="w-8 h-8 mx-auto mb-2 text-gray-400" />
+                <p className="text-sm text-gray-600 dark:text-gray-400">
+                  Click to upload files or drag and drop
+                </p>
+                <p className="text-xs text-gray-500 dark:text-gray-500 mt-1">
+                  PNG, JPG, PDF, DOC up to 10MB each
+                </p>
+              </label>
+            </div>
+
+            {/* File List */}
+            {_files.length > 0 && (
+              <div className="space-y-2">
+                {_files.map((file, index) => (
+                  <div
+                    key={index}
+                    className="flex items-center justify-between p-2 bg-gray-50 dark:bg-gray-800 rounded-lg"
+                  >
+                    <span className="text-sm text-gray-700 dark:text-gray-300">
+                      {file.name}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => removeFile(index)}
+                      className="text-red-500 hover:text-red-700"
+                    >
+                      <X className="w-4 h-4" />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* Submit Button */}
+          <div className="flex justify-end space-x-4 pt-4">
+            <Button type="button" variant="outline">
+              Cancel
+            </Button>
+            <Button
+              type="submit"
+              disabled={formState.isSubmitting}
+              className="min-w-[120px]"
+            >
+              {formState.isSubmitting ? (
+                <div className="flex items-center space-x-2">
+                  <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                  <span>Saving...</span>
+                </div>
+              ) : isEditing ? (
+                "Update Ticket"
+              ) : (
+                "Create Ticket"
+              )}
+            </Button>
+          </div>
+        </form>
+      </CardContent>
+    </Card>
   );
 }
